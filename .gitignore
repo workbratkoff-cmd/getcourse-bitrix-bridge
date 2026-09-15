@@ -10,3 +10,4 @@ venv/
 *.db-shm
 data/
 .DS_Store
+*.log
