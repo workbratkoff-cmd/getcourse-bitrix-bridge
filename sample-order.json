@@ -1,0 +1,11 @@
+{
+  "event": "order.created",
+  "order_id": "4817352",
+  "cost": "24900",
+  "offer": "Курс «Таргет с нуля»",
+  "user": {
+    "name": "Анна Петрова",
+    "email": " Anna.Petrova@Mail.ru ",
+    "phone": "8 (916) 123-45-67"
+  }
+}
