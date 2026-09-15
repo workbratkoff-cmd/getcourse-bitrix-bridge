@@ -11,15 +11,30 @@ Python 3.12, FastAPI, SQLite.
 Как запустить
 -------------
 
+Проверялось на Python 3.12.
+
+    git clone https://github.com/workbratkoff-cmd/getcourse-bitrix-bridge.git
+    cd getcourse-bitrix-bridge
+
+Дальше Windows:
+
     python -m venv .venv
     .venv\Scripts\activate
     pip install -r requirements.txt
-    copy .env.example .env
     python -m app
 
-Сервис на http://localhost:3000, база в ./data/app.db.
-Настройки по умолчанию рабочие: Bitrix и WhatsApp в режиме заглушки, наружу
-ничего не уходит.
+macOS или Linux:
+
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    python -m app
+
+Сервис на http://localhost:3000, база в ./data/app.db — создастся сама.
+
+Настройки по умолчанию уже рабочие: Bitrix24 и WhatsApp в режиме заглушки,
+наружу ничего не уходит. Файл .env нужен, только если что-то менять, образец
+лежит в .env.example.
 
 
 Как проверить
