@@ -47,10 +47,69 @@ WEBHOOK_BODY_DOC = {
 }
 
 
+# Что ручка вебхука реально отвечает. Без этого в /docs висят выдуманные
+# FastAPI 200 и 422, которых у нас нет, а настоящие коды идут как Undocumented.
+WEBHOOK_RESPONSES = {
+    202: {
+        "description": "Событие принято и поставлено в очередь",
+        "content": {"application/json": {"example": {
+            "status": "accepted",
+            "order_id": "4817352",
+            "event": "order.created",
+            "event_id": 1,
+            "normalized": {
+                "email": "anna.petrova@mail.ru",
+                "phone": "+79161234567",
+                "cost": 24900.0,
+            },
+        }}},
+    },
+    200: {
+        "description": "Такое событие уже приходило, ничего не изменилось",
+        "content": {"application/json": {"example": {
+            "status": "duplicate",
+            "order_id": "4817352",
+            "event": "order.created",
+            "event_id": 1,
+        }}},
+    },
+    400: {
+        "description": "Тело не разобралось или не прошло проверку",
+        "content": {"application/json": {"example": {
+            "error": "invalid_payload",
+            "details": ["user.phone не похож на телефон"],
+        }}},
+    },
+    401: {
+        "description": "Неверный секрет",
+        "content": {"application/json": {"example": {"error": "invalid_secret"}}},
+    },
+}
+
+SECRET_REQUIRED = {
+    401: {
+        "description": "Неверный секрет",
+        "content": {"application/json": {"example": {"error": "invalid_secret"}}},
+    }
+}
+
+
 class JsonResponse(JSONResponse):
     # без явного charset некоторые клиенты читают ответ как latin-1
     # и ломают кириллицу
     media_type = "application/json; charset=utf-8"
+
+
+def strip_validation_errors(schema: dict) -> dict:
+    # FastAPI дописывает 422 в каждую ручку с параметрами, но мы разбираем
+    # запрос сами и 422 не возвращаем никогда — убираем из описания
+    for path in schema.get("paths", {}).values():
+        for operation in path.values():
+            if isinstance(operation, dict):
+                operation.get("responses", {}).pop("422", None)
+    for name in ("HTTPValidationError", "ValidationError"):
+        schema.get("components", {}).get("schemas", {}).pop(name, None)
+    return schema
 
 
 def secret_matches(provided: str | None, expected: str) -> bool:
@@ -110,14 +169,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "queue": store.queue_stats(),
         }
 
-    @app.get("/admin/state", summary="Весь дамп базы: что записалось")
+    @app.get("/admin/state", summary="Весь дамп базы: что записалось",
+             responses=SECRET_REQUIRED)
     async def admin_state(secret: str | None = None):
         # весь дамп базы — чтобы глазами проверить, что записалось
         if not secret_matches(secret, settings.webhook_secret):
             return JsonResponse({"error": "invalid_secret"}, status_code=401)
         return {**store.snapshot(), "bitrix_calls": bitrix.calls}
 
-    @app.post("/admin/drain", summary="Прогнать очередь вручную")
+    @app.post("/admin/drain", summary="Прогнать очередь вручную",
+              responses=SECRET_REQUIRED)
     async def admin_drain(secret: str | None = None):
         # прогнать очередь руками, если воркер выключен
         if not secret_matches(secret, settings.webhook_secret):
@@ -128,6 +189,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post(
         "/webhooks/getcourse",
         summary="Приём события о заказе из GetCourse",
+        status_code=202,
+        responses=WEBHOOK_RESPONSES,
         openapi_extra=WEBHOOK_BODY_DOC,
     )
     async def getcourse_webhook(request: Request, secret: str | None = None):
@@ -198,4 +261,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         }, status_code=202)
 
+    # схема строится один раз, когда все ручки уже объявлены
+    app.openapi_schema = strip_validation_errors(app.openapi())
     return app
