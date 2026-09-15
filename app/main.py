@@ -22,6 +22,30 @@ log = get_logger("http")
 
 MAX_BODY_BYTES = 256 * 1024
 
+# Тело вебхука читаем сырым, поэтому FastAPI сам его не задокументирует.
+# Описываем руками, чтобы в /docs была форма с готовым примером.
+WEBHOOK_BODY_DOC = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/json": {
+                "schema": {"type": "object"},
+                "example": {
+                    "event": "order.created",
+                    "order_id": "4817352",
+                    "cost": "24900",
+                    "offer": "Курс «Таргет с нуля»",
+                    "user": {
+                        "name": "Анна Петрова",
+                        "email": " Anna.Petrova@Mail.ru ",
+                        "phone": "8 (916) 123-45-67",
+                    },
+                },
+            }
+        },
+    }
+}
+
 
 class JsonResponse(JSONResponse):
     # без явного charset некоторые клиенты читают ответ как latin-1
@@ -77,7 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.bitrix = bitrix
     app.state.worker = worker
 
-    @app.get("/healthz")
+    @app.get("/healthz", summary="Жив ли сервис и что в очереди")
     async def healthz():
         return {
             "status": "ok",
@@ -86,14 +110,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "queue": store.queue_stats(),
         }
 
-    @app.get("/admin/state")
+    @app.get("/admin/state", summary="Весь дамп базы: что записалось")
     async def admin_state(secret: str | None = None):
         # весь дамп базы — чтобы глазами проверить, что записалось
         if not secret_matches(secret, settings.webhook_secret):
             return JsonResponse({"error": "invalid_secret"}, status_code=401)
         return {**store.snapshot(), "bitrix_calls": bitrix.calls}
 
-    @app.post("/admin/drain")
+    @app.post("/admin/drain", summary="Прогнать очередь вручную")
     async def admin_drain(secret: str | None = None):
         # прогнать очередь руками, если воркер выключен
         if not secret_matches(secret, settings.webhook_secret):
@@ -101,7 +125,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result = await worker.tick()
         return {**result, "queue": store.queue_stats()}
 
-    @app.post("/webhooks/getcourse")
+    @app.post(
+        "/webhooks/getcourse",
+        summary="Приём события о заказе из GetCourse",
+        openapi_extra=WEBHOOK_BODY_DOC,
+    )
     async def getcourse_webhook(request: Request, secret: str | None = None):
         request_id = str(uuid.uuid4())
 
